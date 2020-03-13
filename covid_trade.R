@@ -1,3 +1,6 @@
+#updated blog post can be found here https://scweiss.blogspot.com/2020/03/can-trade-with-china-predict-covid-19.html
+
+
 library(dplyr)
 library(reshape2)
 library(glmnet)
@@ -40,15 +43,36 @@ covid_19[which(covid_19[,'name'] == 'UK'),'name'] = 'United Kingdom'
 #merge with trade data
 data_wide_2 = merge(data_wide,covid_19, by.x = 'country', by.y = 'name')
 
-data_mat_x = data_wide_2[,-c(1, dim(data_wide_2)[2])]
+
+#gpd / capita here https://data.worldbank.org/indicator/NY.GDP.PCAP.PP.CD
+gdp = read.csv('/users/sweiss/downloads/gdp_country.csv', header = TRUE)
+
+data_wide_3[,'population'] = as.numeric(data_wide_3[,'population'])
+hist(data_wide_3[,'covid_19']/data_wide_3[,'population'])
+
+covid_cap = data_wide_3[,'covid_19']/data_wide_3[,'population']
+exports_cap = rowSums(data_wide_3[,-c(which(colnames(data_wide_3) %in% c('covid_19','population','country')) )])/data_wide_3[,'population']
+
+eda_df = data.frame(covid_cap, exports_cap, covid = data_wide_3[,'covid_19'],
+                    exports = rowSums(data_wide_3[,-c(which(colnames(data_wide_3) %in% c('covid_19','population','country')) )]),
+                    country = data_wide_3[,'country'],
+                    population = data_wide_3[,'population'])
+ggplot(eda_df, aes(x = log(exports_cap), y= log(covid_cap), label = country))+geom_label()
+
+ggplot(eda_df, aes(x = log(exports), y= log(covid), label = country))+geom_label()
+
+summary(lm(log(covid) ~ log(exports), data = eda_df))
+summary(lm(log(covid) ~ log(covid_cap), data = eda_df))
+
+data_mat_x = data_wide_3[,-c(which(colnames(data_wide_3) %in% c('covid_19','population','country')) )] / data_wide_3[,'population']
 data_mat_x = data_mat_x[,-which(apply(data_mat_x,2,sd) == 0)]
 
 scaled_log_data_mat_x = apply(log(1+as.matrix(data_mat_x)), 2, scale)
-lasso_reg = cv.glmnet(scaled_log_data_mat_x, log(1+data_wide_2[,'covid_19']))
+lasso_reg = cv.glmnet(scaled_log_data_mat_x, log(1+data_wide_3[,'covid_19']))
 
 
 rf_df = data.frame(log(1+as.matrix(data_mat_x)))
-rf_df$covid_19 = log(1+data_wide_2[,'covid_19'])
+rf_df$covid_19 = log(covid_cap)
 rf_1 = ranger(covid_19~., data = rf_df, importance = 'impurity')
 rf_1
 #how much prediction power from just total_exports - .5
@@ -56,33 +80,33 @@ rf_1
 sort(rf_1$variable.importance, decreasing = TRUE)[1:10]
 
 preds = predict(lasso_reg, newx = log(1+as.matrix(data_mat_x)), s = 'lambda.min')
-plot_data = data.frame(ln_covid = log(1+data_wide_2[,'covid_19']), 
+plot_data = data.frame(ln_covid = log(covid_cap), 
                        preds = rf_1$predictions, 
-                       country = data_wide_2[,'country'],
-                       total_exports = rowSums(data_mat_x),
+                       country = data_wide_3[,'country'],
+                       ln_total_exports = log(rowSums(data_mat_x)),
                        lasso_preds = preds[,1])
-#how much prediction power from just total_exports - .12
-rf_2 = ranger(ln_covid ~ total_exports, data = plot_data)
-rf_2
+
+summary(lm(ln_covid ~ ln_total_exports, data = plot_data))
+# .24 r^2
 
 
 ggplot(plot_data, aes(x = ln_covid))+geom_histogram() + theme_minimal() + 
-  ggtitle("Histogram of Log Covid-19 in Each Country") + ylab('Count')+
-  xlab('Log(Number of Covid-19 Instances + 1)')
+  ggtitle("Histogram of log Per Capita COVID-19 in Each Country") + ylab('Count')+
+  xlab('Log(Number of Covid-19 Instances / Population)')
 
-ggplot(plot_data, aes(x = log(total_exports+1), y = ln_covid, label = country)) + geom_text_repel() + theme_minimal()+
-  ggtitle("Covid-19 Instances by Chinese Exports") + ylab('log(Covid-19 + 1)')+
-  xlab('Log($ Exports + 1)')
+
+ggplot(plot_data, aes(x = ln_total_exports, y = ln_covid, label = country)) + geom_text_repel() + theme_minimal()+
+  ggtitle("log Covid-19 Per Capita by Chinese Exports") + ylab('log(Covid-19 / population)')+
+  xlab('Log($ Exports)')
 
   
 ggplot(plot_data, aes(x = preds, y = ln_covid, label = country)) +
   geom_text_repel() + theme_minimal()+
-  ggtitle("Covid-19 Instances OOB Predictions") + ylab('log(Covid-19 + 1)')+
+  ggtitle("Covid-19/Population by OOB Predictions") + ylab('log(Covid-19 / Population)')+
   xlab('Predictions')
 
 
-ggplot(plot_data, aes(x = log(total_exports+1), y = ln_covid, label = country)) + geom_text_repel() + theme_minimal()+
-  
+
 
 
 
@@ -96,4 +120,5 @@ coefs[,'id'] = factor(coefs[,'id'], coefs[order(coefs[,'coef']),'id'])
 ggplot(coefs[-1,], aes(x = id, y= coef))+geom_point() + theme_minimal()+
   theme(axis.text.x = element_text(angle = 90),axis.text=element_text(size=12))+
   ggtitle('Coefficients of GLMNET Model')+xlab('Trade Industry') + ylab('Scaled Coefficient')
+
 
