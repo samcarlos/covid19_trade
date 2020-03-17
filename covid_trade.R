@@ -43,6 +43,27 @@ covid_19[which(covid_19[,'name'] == 'UK'),'name'] = 'United Kingdom'
 #merge with trade data
 data_wide_2 = merge(data_wide,covid_19, by.x = 'country', by.y = 'name')
 
+population = read.csv('/users/sweiss/downloads/pop_country.csv')
+population = population[c('Type.of.aggregate..group..and.constituents..','X2020')]
+population[,'X2020'] = gsub(' ','',population[,'X2020'])
+colnames(population) = c('country','population')
+
+population = (unique(population))
+
+adtl_pop= data.frame(country= c('South Korea','macao', 'vietnam'), population = c(51470,  622, 95540))
+population[,'country'] = as.character(population[,'country'])
+population[grep('Brunei',population[,'country']),'country'] = 'Brunei'
+population[grep('Czech',population[,'country']),'country'] = 'Czech Republic'
+population[grep('Hong Kong',population[,'country']),'country'] = 'Hong Kong'
+population[grep('Iran',population[,'country']),'country'] = 'Iran'
+population[grep('Macau',population[,'country']),'country'] = 'Macau'
+population[grep('Moldova',population[,'country']),'country'] = 'Moldova'
+population[grep('Palestine',population[,'country']),'country'] = 'Palestine'
+population[grep('Russia',population[,'country']),'country'] = 'Russia'
+population[grep('United States',population[,'country'])[1],'country'] = 'United States'
+
+population = rbind(population, adtl_pop)
+data_wide_3 = merge(data_wide_2, unique(unique(population)), by = 'country')
 
 #gpd / capita here https://data.worldbank.org/indicator/NY.GDP.PCAP.PP.CD
 gdp = read.csv('/users/sweiss/downloads/gdp_country.csv', header = TRUE)
